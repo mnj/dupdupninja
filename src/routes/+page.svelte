@@ -1,8 +1,58 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
+  import FolderSelector from "../components/FolderSelector.svelte";
+  import { onDestroy, onMount } from "svelte";
+    import { listen } from "@tauri-apps/api/event";
 
   let name = $state("");
   let greetMsg = $state("");
+
+  let selectedFolder = $state<string>('');
+  let scanStatus = $state<string>('');
+  let percent = $state<number>(0);
+  let current = $state<number>(0);
+  let total = $state<number>(0);
+  let scanning = $state<boolean>(false);
+  let currentFile = $state<string>('');
+
+  let unlisten: (() => void) | undefined;
+
+   onMount(async () => {
+    unlisten = await listen('scan_progress', (event: any) => {
+      // event.payload has { current, total, percent, file }
+      if (event.payload) {
+        percent = event.payload.percent ?? 0;
+        current = event.payload.current ?? 0;
+        total = event.payload.total ?? 0;
+        currentFile = event.payload.file ?? '';
+        scanStatus = `Scanning (${current} / ${total}): ${currentFile}`;
+        if (percent >= 100) {
+          scanning = false;
+          scanStatus = 'Scan complete!';
+        }
+      }
+    });
+  });
+
+  onDestroy(() => {
+    if (unlisten) unlisten();
+  });
+
+  async function handleFolderSelected(folder: string) {
+    selectedFolder = folder;
+    scanStatus = '';
+    percent = 0;
+    current = 0;
+    total = 0;
+    currentFile = '';
+    scanning = true;
+
+    try {
+      await invoke("scan_folder", { path: selectedFolder });
+    } catch (error) {
+      console.error("Error scanning folder:", error);
+    }
+  }
 
   async function greet(event: Event) {
     event.preventDefault();
@@ -32,6 +82,20 @@
     <button type="submit">Greet</button>
   </form>
   <p>{greetMsg}</p>
+
+  <FolderSelector onSelect={handleFolderSelected} />
+  {#if selectedFolder}
+    <p>Selected: {selectedFolder}</p>
+  {/if}
+
+  {#if scanning}
+    <progress value={percent} max="100">{percent}%</progress>
+    <p>{scanStatus}</p>
+    <p><small>Current file: {currentFile}</small></p>
+  {:else if scanStatus}
+    <p>{scanStatus}</p>
+  {/if}
+
 </main>
 
 <style>

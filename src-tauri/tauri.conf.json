@@ -12,9 +12,11 @@
   "app": {
     "windows": [
       {
-        "title": "dupdupninja",
-        "width": 800,
-        "height": 600
+        "title": "DupDupNinja - Media Duplication Finder",
+        "width": 1024,
+        "height": 800,
+        "maximized": true,
+        "resizable": true
       }
     ],
     "security": {
