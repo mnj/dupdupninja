@@ -33,11 +33,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential curl wget file libxdo-dev libssl-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
-      - name: setup node
-        uses: actions/setup-node@v4
-        with:
-          node-version: lts/*
-          cache: 'bun' # Set this to npm, yarn or pnpm.
+      # - name: setup node
+      #   uses: actions/setup-node@v4
+      #   with:
+      #     node-version: lts/*
+      #     cache: 'bun' # Set this to npm, yarn or pnpm.
       - name: install bun
         uses: oven-sh/setup-bun@v2
         with:
