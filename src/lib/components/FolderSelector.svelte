@@ -6,7 +6,7 @@
   async function selectFolder() {
     const folder = await open({
       directory: true,
-      multiple: false, // set to true if you want to allow multi-select
+      multiple: false, 
       title: 'Select a folder to scan'
     });
     if (folder && typeof folder === 'string') {
@@ -15,8 +15,3 @@
     }
   }
 </script>
-
-<button on:click={selectFolder}>
-  Select Folder to Scan
-</button>
-

@@ -49,7 +49,7 @@
 
 <div class="split-root" bind:this={container}>
   <div class="pane left" bind:this={leftPane}>
-    <div class="pane-title">Tree View</div>
+    <div class="pane-title">File Sets</div>
     <div class="tree-wrapper">
       <!-- Replace with your actual tree component -->
       <div class="fake-tree">
@@ -63,7 +63,7 @@
   </div>
   <div class="separator" bind:this={separator} on:pointerdown={startDrag}></div>
   <div class="pane right" bind:this={rightPane}>
-    <div class="pane-title">Data Table</div>
+    <div class="pane-title">Detected Duplicates</div>
     <div class="table-wrapper">
       <!-- Placeholder for TanStack table with virtualization -->
       <div class="virtual-table">

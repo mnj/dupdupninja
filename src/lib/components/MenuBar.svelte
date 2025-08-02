@@ -1,6 +1,8 @@
 <script lang="ts">
   import { onDestroy } from "svelte";
-
+  import {invoke} from "@tauri-apps/api/core";
+  import { open } from '@tauri-apps/plugin-dialog';
+  
   type MenuItem = { label: string; action: () => void };
   type Menu = { title: string; items: MenuItem[] };
 
@@ -13,10 +15,9 @@
       ],
     },
     {
-      title: 'Scan',
+      title: 'Actions',
       items: [
-        { label: 'Folder', action: () => console.log('Scan Folder') },
-        { label: 'Device', action: () => console.log('Scan Device') },
+        { label: 'Folder', action: () => selectAndScan() },
       ],
     },
   ];
@@ -39,6 +40,24 @@
   };
   window.addEventListener('click', onBodyClick);
   onDestroy(() => window.removeEventListener('click', onBodyClick));
+
+  async function selectAndScan() {
+    try {
+      const folder = await open({
+        directory: true,
+        multiple: false,
+        title: 'Select a folder to scan',
+      });
+        
+      if (folder && typeof folder === 'string') {
+        // kick off the scan on Rust side
+        await invoke('scan_folder', { path: folder });
+        console.log('Scan started for', folder);
+      }
+    } catch (e) {
+      console.error('Folder selection or scan failed', e);
+    }
+  }
 </script>
 
 <nav class="menu-bar">
@@ -55,7 +74,9 @@
       </button>
       {#if openMenu === menu.title}
         <div class="submenu">
-          {#each menu.items as item}
+          {#each menu.items as item}          
+            <!-- svelte-ignore a11y_click_events_have_key_events -->
+            <!-- svelte-ignore a11y_no_static_element_interactions -->
             <div class="submenu-item" on:click={() => { item.action(); openMenu = null; }}>
               {item.label}
             </div>
