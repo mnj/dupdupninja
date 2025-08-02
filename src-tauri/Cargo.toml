@@ -1,6 +1,6 @@
 [package]
 name = "dupdupninja"
-version = "0.1.0"
+version = "0.1.1"
 description = "DupDupNinja - Media Duplication Finder"
 authors = ["Michael N. Jensen"]
 edition = "2021"
