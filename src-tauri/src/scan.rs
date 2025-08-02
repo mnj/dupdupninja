@@ -84,142 +84,138 @@ fn get_media_files<P: AsRef<Path>>(path: P) -> Vec<String> {
 /// - repeated "scan_progress" with phase "discover" and `{ discovered }`
 /// - repeated "scan_progress" with phase "processing" and `{ current, total, percent }`
 /// - "scan_finished" / "scan_cancelled" / "scan_error"
-pub fn start_scan_with_id(path: String, app: AppHandle, cancel_token: CancellationToken, scan_id: String) {
-     thread::spawn(move || {
+// src-tauri/src/scan.rs (inside the same file with helpers like compute_sha256_with_cancel)
+
+pub fn start_scan_with_id(
+    path: String,
+    app: AppHandle,
+    cancel_token: CancellationToken,
+    scan_id: String,
+) {
+    thread::spawn(move || {
+        // --- scan_started ---
         let _ = app.emit(
             "scan_started",
             serde_json::json!({ "scan_id": scan_id.clone(), "path": path.clone() }),
         );
 
-        // Define media file extensions we want to scan
+        // Prepare extension set
         let media_exts = [
-            "mp4", "mkv", "avi", "mov", "flv", "webm", // video
-            "mp3", "wav", "flac", "aac", "ogg",        // audio
-            "jpg", "jpeg", "png", "gif", "bmp", "tiff", // image
+            "mp4", "mkv", "avi", "mov", "flv", "webm",
+            "mp3", "wav", "flac", "aac", "ogg",
+            "jpg", "jpeg", "png", "gif", "bmp", "tiff",
         ];
         let exts: HashSet<String> = media_exts.iter().map(|s| s.to_string()).collect();
 
-        // Channel for discovered file paths
-        let (tx_paths, rx_paths) = unbounded::<String>();
-
-        // Shared state
+        // Shared discovery state
+        let mut discovered_files = Vec::new();
         let discovered_count = Arc::new(AtomicUsize::new(0));
-        let processed = Arc::new(AtomicUsize::new(0));
-        let records: Arc<Mutex<Vec<FileRecordTemp>>> = Arc::new(Mutex::new(Vec::new()));
-        let discovery_done = Arc::new(AtomicBool::new(false));
-        
         let mut last_discover_emit = Instant::now();
-        let mut last_processing_emit = Instant::now();
-        let mut last_percent_sent = -1i64;
-        let mut processing_phase_active = false;
 
-        // Discovery thread
-        {
-            let tx_paths = tx_paths.clone();
-            let discovered_count = Arc::clone(&discovered_count);
-            let cancel = cancel_token.clone();
-            let app_clone = app.clone();
-            let scan_id_clone = scan_id.clone();
-            let discovery_done_clone = Arc::clone(&discovery_done);
-            
-            thread::spawn(move || {
-                for entry in WalkDir::new(&path).into_iter() {
-                    if cancel.is_cancelled() {
-                        break;
-                    }
-
-                    match entry {
-                        Ok(e) => {
-                            if e.file_type().is_file() {
-                                if let Some(ext_os) = e.path().extension() {
-                                    if let Some(ext) = ext_os.to_str() {
-                                        if exts.contains(&ext.to_lowercase()) {
-                                            let file_str = e.path().display().to_string();
-                                            let _ = tx_paths.send(file_str);
-                                            discovered_count.fetch_add(1, Ordering::SeqCst);
-                                        }
-                                    }
-                                }
-                            }
+        // ---------- DISCOVERY PHASE ----------
+        for entry in WalkDir::new(&path).into_iter() {
+            if cancel_token.is_cancelled() {
+                let _ = app.emit(
+                    "scan_cancelled",
+                    serde_json::json!({ "scan_id": scan_id.clone() }),
+                );
+                return;
+            }
+            if let Ok(e) = entry {
+                if e.file_type().is_file() {
+                    if let Some(ext_os) = e.path().extension().and_then(|x| x.to_str()) {
+                        if exts.contains(&ext_os.to_lowercase()) {
+                            let fp = e.path().display().to_string();
+                            discovered_files.push(fp);
+                            discovered_count.fetch_add(1, Ordering::SeqCst);
                         }
-                        Err(_) => {
-                            // ignore problematic entries
-                        }
-                    }
-
-                    // Throttled discovery progress emit (every ~300ms)
-                    if last_discover_emit.elapsed() >= Duration::from_millis(300) {
-                        let _ = app_clone.emit(
-                            "scan_progress",
-                            serde_json::json!({
-                                "scan_id": scan_id_clone,
-                                "phase": "discover",
-                                "discovered": discovered_count.load(Ordering::SeqCst),
-                            }),
-                        );
-                        last_discover_emit = Instant::now();                        
                     }
                 }
-                // signal completion of discovery
-                discovery_done_clone.store(true, Ordering::SeqCst);
-                drop(tx_paths);
-            })
-        };
+            }
+            // emit every 300ms
+            if last_discover_emit.elapsed() >= Duration::from_millis(300) {
+                let _ = app.emit(
+                    "scan_progress",
+                    serde_json::json!({
+                        "scan_id": scan_id.clone(),
+                        "phase": "discover",
+                        "discovered": discovered_count.load(Ordering::SeqCst),
+                    }),
+                );
+                last_discover_emit = Instant::now();
+            }
+        }
+        // Final discovery emit
+        let total_discovered = discovered_count.load(Ordering::SeqCst);
+        let _ = app.emit(
+            "scan_progress",
+            serde_json::json!({
+                "scan_id": scan_id.clone(),
+                "phase": "discover",
+                "discovered": total_discovered,
+            }),
+        );
 
-        // Processing phase
+        // ---------- PROCESSING PHASE ----------
+        let total = total_discovered.max(1);
+        let processed = Arc::new(AtomicUsize::new(0));
+        let records: Arc<Mutex<Vec<FileRecordTemp>>> =
+            Arc::new(Mutex::new(Vec::with_capacity(total)));
+        let mut last_processing_emit = Instant::now();
+        let mut last_percent = -1i64;
+
+        // Feed channel
+        let (tx, rx) = crossbeam_channel::bounded::<String>(total);
+        for fp in discovered_files {
+            if cancel_token.is_cancelled() {
+                let _ = app.emit(
+                    "scan_cancelled",
+                    serde_json::json!({ "scan_id": scan_id.clone() }),
+                );
+                return;
+            }
+            let _ = tx.send(fp);
+        }
+        drop(tx);
+
+        // Worker threads
         let parallelism = std::thread::available_parallelism()
             .map(|n| n.get().saturating_sub(1).max(1))
             .unwrap_or(1);
-
-        let mut worker_handles = Vec::with_capacity(parallelism);
+        let mut handles = Vec::new();
         for _ in 0..parallelism {
-            let rx = rx_paths.clone();
-            let processed = Arc::clone(&processed);
-            let records = Arc::clone(&records);
+            let rx = rx.clone();
+            let proc = Arc::clone(&processed);
+            let recs = Arc::clone(&records);
             let cancel = cancel_token.clone();
+            let scan_id_clone = scan_id.clone();
+            let app_evt = app.clone();
 
-            let handle = thread::spawn(move || {
+            let h = thread::spawn(move || {
                 while let Ok(file_path) = rx.recv() {
                     if cancel.is_cancelled() {
                         break;
                     }
-
-                    let mut maybe_rec: Option<FileRecordTemp> = None;
-                    let path_obj = Path::new(&file_path);
-                    match stat_file(path_obj) {
-                        Ok((size, mtime)) => match compute_sha256_with_cancel(path_obj, &cancel) {
-                            Ok(sha256) => {
-                                maybe_rec = Some(FileRecordTemp {
-                                    path: file_path.clone(),
-                                    size,
-                                    mtime,
-                                    sha256,
-                                });
-                            }
-                            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {
-                                break; // cancelled during hashing
-                            }
-                            Err(e) => {
-                                eprintln!("Failed to process {}: {}", file_path, e);
-                            }
-                        },
-                        Err(e) => {
-                            eprintln!("Failed to stat {}: {}", file_path, e);
+                    // stat + hash
+                    if let Ok((size, mtime)) = stat_file(Path::new(&file_path)) {
+                        if let Ok(sha256) = compute_sha256_with_cancel(Path::new(&file_path), &cancel)
+                        {
+                            let mut g = recs.lock().unwrap();
+                            g.push(FileRecordTemp {
+                                path: file_path.clone(),
+                                size,
+                                mtime,
+                                sha256,
+                            });
                         }
                     }
-
-                    if let Some(rec) = maybe_rec {
-                        let mut guard = records.lock().unwrap();
-                        guard.push(rec);
-                    }
-
-                    processed.fetch_add(1, Ordering::SeqCst);
+                    proc.fetch_add(1, Ordering::SeqCst);
                 }
             });
-            worker_handles.push(handle);
+            handles.push(h);
         }
 
-        // --- Unified progress emitter ---
+        // Progress loop
         loop {
             if cancel_token.is_cancelled() {
                 let _ = app.emit(
@@ -228,59 +224,30 @@ pub fn start_scan_with_id(path: String, app: AppHandle, cancel_token: Cancellati
                 );
                 return;
             }
-
-            // Always emit latest discover progress while discovery is still ongoing
-            if !discovery_done.load(Ordering::SeqCst) {
-                let discovered = discovered_count.load(Ordering::SeqCst);
-                if last_discover_emit.elapsed() >= Duration::from_millis(300) {
-                    let _ = app.emit(
-                        "scan_progress",
-                        serde_json::json!({
-                            "scan_id": scan_id.clone(),
-                            "phase": "discover",
-                            "discovered": discovered,
-                        }),
-                    );
-                    last_discover_emit = Instant::now();
-                }
-            }
-
-            // Once any processing has begun (processed > 0), switch to processing phase
             let done = processed.load(Ordering::SeqCst);
-            let current_total = discovered_count.load(Ordering::SeqCst).max(1); // dynamic total
-            if done > 0 {
-                processing_phase_active = true;
+            let pct = ((done * 100) / total).min(100) as i64;
+            if pct != last_percent || last_processing_emit.elapsed() >= Duration::from_millis(500) {
+                let _ = app.emit(
+                    "scan_progress",
+                    serde_json::json!({
+                        "scan_id": scan_id.clone(),
+                        "phase": "processing",
+                        "current": done,
+                        "total": total,
+                        "percent": pct,
+                    }),
+                );
+                last_percent = pct;
+                last_processing_emit = Instant::now();
             }
-
-            if processing_phase_active {
-                let percent = ((done * 100) / current_total).min(100) as i64;
-                if percent != last_percent_sent || last_processing_emit.elapsed() >= Duration::from_millis(500) {
-                    // emit processing progress
-                    let _ = app.emit(
-                        "scan_progress",
-                        serde_json::json!({
-                            "scan_id": scan_id.clone(),
-                            "phase": "processing",
-                            "current": done,
-                            "total": current_total,
-                            "percent": percent
-                        }),
-                    );
-                    last_percent_sent = percent;
-                    last_processing_emit = Instant::now();
-                }
-            }
-
-            // Termination: discovery done AND all discovered items processed
-            if discovery_done.load(Ordering::SeqCst) && done >= discovered_count.load(Ordering::SeqCst) {
+            if done >= total {
                 break;
             }
-
             thread::sleep(Duration::from_millis(100));
         }
 
-         // join workers
-        for h in worker_handles {
+        // Join workers
+        for h in handles {
             let _ = h.join();
         }
 
@@ -292,28 +259,13 @@ pub fn start_scan_with_id(path: String, app: AppHandle, cancel_token: Cancellati
             return;
         }
 
-        // collect final records
-        let final_records = {
-            let guard = records.lock().unwrap();
-            guard.clone()
-        };
-
-        // TODO: persist `final_records` into your rusqlite DB here.
+        // Final records
+        let final_records = { records.lock().unwrap().clone() };
+        // TODO: persist `final_records` here
 
         let _ = app.emit(
             "scan_finished",
             serde_json::json!({ "scan_id": scan_id.clone(), "count": final_records.len() }),
         );
     });
-}
-
-trait ThreadExt {
-    fn is_running(&self) -> bool;
-}
-impl ThreadExt for thread::JoinHandle<()> {
-    fn is_running(&self) -> bool {
-        // There's no stable way to check without additional signaling. For simplicity,
-        // assume discovery is fast; if you need precise coordination, replace with a shared flag.
-        false
-    }
 }
