@@ -28,7 +28,6 @@ fn get_media_files<P: AsRef<Path>>(path: P) -> Vec<String> {
 
 }
 
-// Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
 fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
@@ -67,8 +66,7 @@ async fn scan_folder(path: String, app: AppHandle) -> Result<(), String> {
     // Placeholder for folder scanning logic
     // This should be replaced with actual scanning code
     
-    Ok(())
-    //Ok(format!("Scanning folder: {}", path))
+    Ok(())    
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

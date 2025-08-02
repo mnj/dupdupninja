@@ -1,13 +1,23 @@
 <!doctype html>
-<html lang="en">
+<html lang="en">  
   <head>
     <meta charset="utf-8" />
     <link rel="icon" href="%sveltekit.assets%/favicon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Tauri + SvelteKit + Typescript App</title>
+    <title>DupDupNinja - Media Duplication Finder</title>
     %sveltekit.head%
   </head>
+  <script>
+    const stored = localStorage.getItem('ui-theme');
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    let theme = 'system';
+    if (stored === 'light' || stored === 'dark' || stored === 'system') {
+      theme = stored;
+    }
+    const effective = theme === 'system' ? (prefersDark ? 'dark' : 'light') : theme;
+    document.documentElement.setAttribute('data-theme', effective);
+  </script>
   <body data-sveltekit-preload-data="hover">
     <div style="display: contents">%sveltekit.body%</div>
-  </body>
+  </body>  
 </html>

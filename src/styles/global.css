@@ -1,0 +1,155 @@
+/* global.css */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--bg);
+  font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--on-surface);
+  transition: background .25s ease, color .25s ease;
+}
+
+body {
+  overflow: hidden; /* prevent outer window scrollbar */
+}
+
+:root {
+  --toolbar-height: 48px;
+  --statusbar-height: 26px;
+  --menu-bar-height: 32px;
+
+  /* light mode defaults */
+  --bg: #f6f6f6;
+  --surface: #ffffff;
+  --on-surface: #0f0f0f;
+  --muted-bg: #f0f4fb;
+  --border: #dcdce0;
+  --toolbar-bg: #f5f7fa;
+  --status-bg: #eceef2;
+  --progress-bg: #d9dce5;
+  --progress-bar: #4f7efc;
+  --menu-bg: #262a34;
+  --menu-color: #f0f0f0;
+  --focus-ring: rgba(79, 126, 252, 0.35);
+  --btn-hover-overlay: rgba(0, 0, 0, 0.04); /* light-mode subtle darkening */
+  --btn-active-overlay: rgba(0, 0, 0, 0.08);
+}
+
+/* system preference fallback, before any JS override */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #2f2f2f;
+    --surface: #1f1f24;
+    --on-surface: #f6f6f6;
+    --muted-bg: #2b2f3a;
+    --border: #3a3f55;
+    --toolbar-bg: #252a36;
+    --status-bg: #222832;
+    --progress-bg: #3b4154;
+    --progress-bar: #7ca5ff;
+    --menu-bg: #1e2230;
+    --menu-color: #e7e9ff;
+    --focus-ring: rgba(79, 126, 252, 0.35);
+    --btn-hover-overlay: rgba(255, 255, 255, 0.08); /* lighten in dark mode */
+    --btn-active-overlay: rgba(255, 255, 255, 0.16);
+  }
+}
+
+/* explicit override from JS/store (takes precedence) */
+[data-theme='light'] {
+  --bg: #f6f6f6;
+  --surface: #ffffff;
+  --on-surface: #0f0f0f;
+  --muted-bg: #f0f4fb;
+  --border: #dcdce0;
+  --toolbar-bg: #f5f7fa;
+  --status-bg: #eceef2;
+  --progress-bg: #d9dce5;
+  --progress-bar: #4f7efc;
+  --menu-bg: #262a34;
+  --menu-color: #f0f0f0;  
+}
+
+[data-theme='dark'] {
+  --bg: #2f2f2f;
+  --surface: #1f1f24;
+  --on-surface: #f6f6f6;
+  --muted-bg: #2b2f3a;
+  --border: #3a3f55;
+  --toolbar-bg: #252a36;
+  --status-bg: #222832;
+  --progress-bg: #3b4154;
+  --progress-bar: #7ca5ff;
+  --menu-bg: #1e2230;
+  --menu-color: #e7e9ff;
+  --btn-hover-overlay: rgba(255, 255, 255, 0.08); /* lighten in dark mode */
+  --btn-active-overlay: rgba(255, 255, 255, 0.16);
+
+}
+
+/* helpers used downstream in components */
+body {
+  background: var(--bg);
+  color: var(--on-surface);
+}
+
+.header,
+.toolbar {
+  background: var(--surface);
+}
+
+.menu-bar {
+  background: var(--menu-bg);
+  color: var(--menu-color);
+}
+
+.status-bar {
+  background: var(--status-bg);
+}
+
+.split-root {
+  background: var(--surface);
+}
+
+.pane-title {
+  background: var(--muted-bg);
+  color: var(--on-surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.tool-btn {
+  background: var(--surface);
+  color: var(--on-surface);
+  border: 1px solid transparent;
+  transition: background .2s ease, border-color .2s ease;
+}
+
+.tool-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.virtual-table {
+  background: var(--muted-bg);
+  border: 1px solid var(--border);
+}
+
+.progress-container {
+  background: var(--progress-bg);
+}
+
+.progress-bar {
+  background: var(--progress-bar);
+}
