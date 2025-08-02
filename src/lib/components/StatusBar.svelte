@@ -10,6 +10,8 @@
     current,
     total,
     showProgress,
+    phase,
+    discovered,
     resetScanState
   } from "$lib/scanStore";
   import { get } from "svelte/store";
@@ -32,17 +34,32 @@
       percent.set(0);
       current.set(0);
       total.set(0);
+      phase.set('discover');
+      discovered.set(0);
       details.set('');
     });
 
-    unlistenProgress = await listen('scan_progress', (event: any) => {
+     unlistenProgress = await listen('scan_progress', (event: any) => {
       const payload = event.payload || {};
       const scanId = payload.scan_id;
       if (scanId !== get(activeScanId)) return;
 
-      percent.set(payload.percent ?? 0);
-      current.set(payload.current ?? 0);
-      total.set(payload.total ?? 0);
+      const p = payload.phase as string | undefined;
+
+      if (p === 'discover') {
+        phase.set('discover');
+        statusText.set('Discovering media files (Press ESC to cancel)...');
+        discovered.set(payload.discovered ?? 0);
+        // during discovery we don't set percent/current/total (indefinite)
+      } else if (p === 'processing') {
+        phase.set('processing');
+        statusText.set('Processing media files (Press ESC to cancel)...');
+        const cur = payload.current ?? 0;
+        const tot = payload.total ?? 0;
+        current.set(cur);
+        total.set(tot);
+        percent.set(payload.percent ?? ((tot > 0) ? Math.floor((cur * 100) / tot) : 0));
+      }
     });
 
     unlistenFinished = await listen('scan_finished', (event: any) => {
@@ -64,10 +81,7 @@
       if (scanId !== get(activeScanId)) return;
 
       statusText.set('Cancelled');
-      setTimeout(() => {
-        // showProgress.set(false);
-        // activeScanId.set(null);
-        // percent.set(0);
+      setTimeout(() => {        
         resetScanState();
       }, 300);
     });
@@ -99,12 +113,24 @@
 <div class="status-bar">
   <div class="pane status-text">{$statusText}</div>
   
-  {#if $showProgress}
+   {#if $showProgress}
     <div class="pane progress" aria-label="progress">
       <div class="progress-container" aria-label="progress">
-        <div class="progress-bar" style="width: {$percent}%"></div>
+        {#if $phase === 'discover'}
+          <!-- Indefinite animated bar -->
+          <div class="progress-bar indeterminate"></div>
+        {:else if $phase === 'processing'}
+          <div class="progress-bar" style="width: {$percent}%"></div>
+        {/if}
       </div>
-      <div class="progress-label">{$percent}% ({$current}/{$total})</div>      
+
+      <div class="progress-label">
+        {#if $phase === 'discover'}
+          {$discovered} files found…
+        {:else if $phase === 'processing'}
+          {$percent}% ({$current}/{$total})
+        {/if}
+      </div>      
     </div>
   {/if}
 
@@ -165,6 +191,19 @@
     height: 100%;
     transition: width 0.3s;
     width: 0%;
+  }
+
+  .progress-bar.indeterminate {
+    position: absolute;
+    width: 30%;
+    left: 0;
+    animation: slide 1.2s infinite;
+  }
+
+  @keyframes slide {
+    0% { left: -30%; }
+    50% { left: 50%; }
+    100% { left: 100%; }
   }
 
   .progress-label {
