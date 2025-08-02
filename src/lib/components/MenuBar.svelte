@@ -1,8 +1,10 @@
 <script lang="ts">
   import { onDestroy } from "svelte";
-  import {invoke} from "@tauri-apps/api/core";
+  import { invoke } from "@tauri-apps/api/core";
   import { open } from '@tauri-apps/plugin-dialog';
-  
+  import { activeScanId } from "$lib/scanStore";
+  import { get } from "svelte/store";
+ 
   type MenuItem = { label: string; action: () => void };
   type Menu = { title: string; items: MenuItem[] };
 
@@ -50,14 +52,26 @@
       });
         
       if (folder && typeof folder === 'string') {
-        // kick off the scan on Rust side
-        await invoke('scan_folder', { path: folder });
-        console.log('Scan started for', folder);
+        // kick off the scan on Rust side; get scan_id
+        const scanId = await invoke('scan_folder', { path: folder }) as string;
+        activeScanId.set(scanId); // store the current Scan Id
+        console.log('Scan started for', folder, 'with Scan Id:', scanId);
       }
     } catch (e) {
       console.error('Folder selection or scan failed', e);
     }
   }
+
+  const onKeydown = (e: KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      const scanId = get(activeScanId);
+      if (scanId) {
+        invoke('cancel_scan', { scanId }).catch(console.error);
+      }
+    }
+  };
+  window.addEventListener('keydown', onKeydown);
+  onDestroy(() => window.removeEventListener('keydown', onKeydown));
 </script>
 
 <nav class="menu-bar">

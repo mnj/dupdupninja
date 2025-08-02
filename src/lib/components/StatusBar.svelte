@@ -1,66 +1,114 @@
 <script lang="ts">
   import { listen } from "@tauri-apps/api/event";
   import { onDestroy, onMount } from "svelte";
-
-  let statusText = $state<string>('Ready');
-  let details = $state<string>('');
-
-  // Receive updates from the backend
-  let percent = $state<number>(0);
-  let current = $state<number>(0);
-  let total = $state<number>(0);
-  let show_progress = $state<boolean>(false);
+  
+  import {
+    activeScanId,
+    statusText,
+    details,
+    percent,
+    current,
+    total,
+    showProgress,
+    resetScanState
+  } from "$lib/scanStore";
+  import { get } from "svelte/store";
 
   let unlistenStarted: (() => void) | undefined;
   let unlistenProgress: (() => void) | undefined;
   let unlistenFinished: (() => void) | undefined;
+  let unlistenCancelled: (() => void) | undefined;
+  let unlistenError: (() => void) | undefined;
   
   onMount(async () => {
-    unlistenStarted = await listen('scan_started', () => {
-      show_progress = true;
-      statusText = 'Scanning...';
-      percent = 0;
-      current = 0;
-      total = 0;
+    unlistenStarted = await listen('scan_started', (event: any) => {
+      const payload = event.payload || {};
+      const scanId = payload.scan_id as string | undefined;
+      if (!scanId) return;
+
+      activeScanId.set(scanId);
+      showProgress.set(true);
+      statusText.set('Scanning (Press ESC to cancel)...');
+      percent.set(0);
+      current.set(0);
+      total.set(0);
+      details.set('');
     });
 
     unlistenProgress = await listen('scan_progress', (event: any) => {
-      if (event.payload) {
-        percent = event.payload.percent ?? 0;
-        current = event.payload.current ?? 0;
-        total = event.payload.total ?? 0;
-      }
+      const payload = event.payload || {};
+      const scanId = payload.scan_id;
+      if (scanId !== get(activeScanId)) return;
+
+      percent.set(payload.percent ?? 0);
+      current.set(payload.current ?? 0);
+      total.set(payload.total ?? 0);
     });
 
-    unlistenFinished = await listen('scan_finished', () => {
-      statusText = 'Ready';
+    unlistenFinished = await listen('scan_finished', (event: any) => {
+      const payload = event.payload || {};
+      const scanId = payload.scan_id;
+      if (scanId !== get(activeScanId)) return;
+
+      statusText.set('Ready');
       setTimeout(() => {
-        show_progress = false;
-        percent = 0;
-      }, 300); // small delay so user sees completion
+        showProgress.set(false);
+        percent.set(0);
+        activeScanId.set(null);
+      }, 300);
+    });
+
+    unlistenCancelled = await listen('scan_cancelled', (event: any) => {
+      const payload = event.payload || {};
+      const scanId = payload.scan_id;
+      if (scanId !== get(activeScanId)) return;
+
+      statusText.set('Cancelled');
+      setTimeout(() => {
+        // showProgress.set(false);
+        // activeScanId.set(null);
+        // percent.set(0);
+        resetScanState();
+      }, 300);
+    });
+
+    unlistenError = await listen('scan_error', (event: any) => {
+      const payload = event.payload || {};
+      const scanId = payload.scan_id;
+      if (scanId !== get(activeScanId)) return;
+
+      statusText.set('Error during scan');
+      details.set(payload.error ?? '');
+      setTimeout(() => {
+        showProgress.set(false);
+        activeScanId.set(null);
+        percent.set(0);
+      }, 1000);
     });
   });
 
   onDestroy(() => {
-    if (unlistenProgress) unlistenProgress();
-    if (unlistenStarted) unlistenStarted();
-    if (unlistenFinished) unlistenFinished();
+    unlistenStarted?.();
+    unlistenProgress?.();
+    unlistenFinished?.();
+    unlistenCancelled?.();
+    unlistenError?.();
   });  
 </script>
 
 <div class="status-bar">
-  <div class="pane status-text">{statusText}</div>
+  <div class="pane status-text">{$statusText}</div>
   
-  {#if show_progress}
-  <div class="pane progress" aria-label="progress">
+  {#if $showProgress}
+    <div class="pane progress" aria-label="progress">
       <div class="progress-container" aria-label="progress">
-        <div class="progress-bar" style="width: {percent}%"></div>
+        <div class="progress-bar" style="width: {$percent}%"></div>
       </div>
-      <div class="progress-label">{percent}% ({current}/{total})</div>
+      <div class="progress-label">{$percent}% ({$current}/{$total})</div>      
     </div>
   {/if}
 
-  <div class="pane details">{details}</div>
+  <div class="pane details">{$details}</div>
 </div>
 
 <style>
