@@ -121,7 +121,7 @@
     background: transparent;
     border: none;
     padding: 6px 10px;
-    color: #f0f0f0;
+    color: var(--menu-color);
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -130,7 +130,8 @@
   }
   .menu-trigger:hover,
   .menu-trigger:focus {
-    background: rgba(255, 255, 255, 0.1);
+    /*background: rgba(255, 255, 255, 0.1);*/
+    background: var(--btn-hover-overlay);
     outline: none;
   }
 
@@ -143,8 +144,8 @@
     position: absolute;
     top: 100%;
     left: 0;
-    background: var(--surface);
-    color: var(--on-surface);
+    background: var(--menu-bg);
+    color: var(--menu-color);
     border: 1px solid var(--border);
     min-width: 140px;
     box-shadow: 0 6px 18px rgba(0,0,0,0.15);
@@ -161,6 +162,7 @@
   }
 
   .submenu-item:hover {
-    background: #f0f4fa;
+    /* background: #f0f4fa; */
+    background: var(--btn-hover-overlay);
   }
 </style>
